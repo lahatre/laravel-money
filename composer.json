@@ -1,0 +1,16 @@
+{
+    "name": "lahatre/money",
+    "version": "0.0.1",
+    "autoload": {
+        "psr-4": {
+            "Lahatre\\Money\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Lahatre\\Money\\Providers\\MoneyServiceProvider"
+            ]
+        }
+    }
+}
