@@ -2,22 +2,22 @@
 
 namespace Lahatre\Money\Casts;
 
-use Lahatre\Money\ValueObjects\Money;
+use Lahatre\Money\Money;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Cast Eloquent pour Money
+ * Eloquent Custom Cast for Money Value Objects.
  * 
- * Get: 1050 (int DB) → Money::fromMinor(1050) → "10.50"
- * Set: Money("10.50") → 1050 (int DB)
+ * Handles serialization between Database (integer/minor units) 
+ * and Application (Money object).
  */
 class MoneyCast implements CastsAttributes
 {
     /**
-     * Cast depuis la DB vers Money
+     * Transform the attribute from the underlying model values.
      *
-     * @param array<string, mixed> $attributes
+     * @return Money|null
      */
     public function get(Model $model, string $key, mixed $value, array $attributes): ?Money
     {
@@ -29,9 +29,9 @@ class MoneyCast implements CastsAttributes
     }
 
     /**
-     * Cast depuis Money vers la DB
+     * Prepare the given value for storage.
      *
-     * @param array<string, mixed> $attributes
+     * @return int Target column value (minor units)
      */
     public function set(Model $model, string $key, mixed $value, array $attributes): int
     {

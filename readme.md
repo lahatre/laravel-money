@@ -1,107 +1,100 @@
-```php
-// ====================================================
-// EXEMPLES D'UTILISATION
-// ====================================================
+# Lahatre Money
 
-/**
- * Migration
- */
+This package provides a precise and developer-friendly way to handle monetary values in Laravel.
+
+It solves the common pitfalls of floating-point arithmetic (like `0.1 + 0.2 !== 0.3`) by using BCMath and integer storage under the hood. It offers a fluent API to perform calculations, handle rounding, and format prices, all while seamlessly integrating with Eloquent.
+
+## Installation
+
+You can install the package via composer:
+
+```bash
+composer require lahatre/money
+```
+
+## Usage
+
+### Preparing the database
+
+We recommend storing money values as integers (minor units, e.g., cents).
+
+```php
 Schema::create('products', function (Blueprint $table) {
     $table->id();
-    $table->string('name');
-    $table->bigInteger('price')->default(0); // Stocke en centimes
+    // 10.00 is stored as 1000
+    $table->bigInteger('price')->default(0); 
     $table->timestamps();
 });
+```
 
-Schema::create('users', function (Blueprint $table) {
-    $table->id();
-    $table->bigInteger('balance')->default(0);
-    $table->timestamps();
-});
+### Preparing the model
 
-/**
- * Models
- */
+Add the `MoneyCast` to your Eloquent model. This will automatically convert the integer from the database into a `Money` object instance.
+
+```php
+use Illuminate\Database\Eloquent\Model;
+use Lahatre\Money\Casts\MoneyCast;
+
 class Product extends Model
 {
     protected $casts = [
         'price' => MoneyCast::class,
     ];
 }
+```
 
-class User extends Model
-{
-    protected $casts = [
-        'balance' => MoneyCast::class,
-    ];
-}
+### working with Money
 
-/**
- * Usage - Création et affichage
- */
+You can assign values using strings, integers, or floats. The package will normalize them for you.
+
+```php
 $product = new Product();
-$product->price = Money::from("19.99");
-$product->save(); // DB: 1999
 
+// You can assign a string (recommended for precision)
+$product->price = '19.99'; 
+
+// Or a float
+$product->price = 19.99;
+
+// The value is saved as an integer (1999)
+$product->save(); 
+```
+
+When retrieving the value, you get an immutable `Money` instance.
+
+```php
+// Automatic formatting as string
 echo $product->price; // "19.99"
-echo $product->price->format(); // "19.99"
 
-/**
- * Usage - Calculs
- */
-$itemPrice = Money::from("19.99");
-$quantity = 3;
-$subtotal = $itemPrice->mul($quantity); // 59.97
+// Fluent arithmetic
+$newPrice = $product->price->add('5.00'); // "24.99"
+```
 
-$vat = $subtotal->percentage(20); // 11.99
-$total = $subtotal->add($vat); // 71.96
+### Calculations & Rounding
 
-/**
- * Usage - Division avec arrondi
- */
-$bill = Money::from("100.00");
-$perPerson = $bill->div(3); // 33.33 (ROUND_HALF_UP)
+All operations return a new instance of `Money`. By default, the package uses Banker's Rounding (`HALF_UP`) and 2 decimals precision.
 
-/**
- * Usage - Comparaisons
- */
-$user = User::find(1);
+```php
+$price = Money::from('100.00');
 
-if ($user->balance->greaterThanOrEqual(Money::from("50.00"))) {
-    $user->balance = $user->balance->sub("50.00");
-    $user->save();
-}
+// Chaining
+$total = $price
+    ->add('50.00')
+    ->mul('0.20'); // Returns a new Money instance
 
-/**
- * Usage - Gestion des négatifs (si allow_negative=true)
- */
-// config/money.php : 'allow_negative' => true
+// Splitting values (e.g. 10 / 3)
+// You can define a specific rounding mode for operations that require it
+use Lahatre\Money\Support\BigNumber;
 
-$balance = Money::from("-25.50"); // OK
-if ($balance->isNegative()) {
-    // Gérer le découvert
-}
+$bill = Money::from('10.00');
 
-/**
- * Usage - Intérêts composés
- */
-$principal = Money::from("1000.00");
-$rate = 5.5; // 5.5% annuel
+$split = $bill->div(3, BigNumber::ROUND_UP); // "3.34"
+```
 
-$interest = $principal->percentage($rate); // 55.00
-$newBalance = $principal->add($interest); // 1055.00
+### Configuration
 
-/**
- * Configuration multi-devises (même package, config différente)
- */
+You can publish the config file to change the default precision (e.g. for cryptocurrencies) or the global rounding mode.
 
-// Pour JPY (pas de décimales)
-// config/money.php : 'precision' => 0
-$priceJPY = Money::from("1500"); // 1500¥
-$priceJPY->format(); // "1500"
-
-// Pour KWD (3 décimales)
-// config/money.php : 'precision' => 3
-$priceKWD = Money::from("10.500"); // 10.500 KD
-$priceKWD->mul(2); // 21.000 KD
+```bash
+php artisan vendor:publish --tag=money-config
 ```

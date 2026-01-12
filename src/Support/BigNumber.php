@@ -5,12 +5,23 @@ namespace Lahatre\Money\Support;
 use InvalidArgumentException;
 
 /**
- * Wrapper bas niveau autour de BCMath
- * Tous les calculs retournent des strings
- * Toutes les entrées sont validées
+ * Stateless wrapper around BCMath functions.
+ * 
+ * Ensures all operations work with strings to maintain arbitrary precision.
+ * Implements custom rounding logic not native to BCMath.
  */
 final class BigNumber
 {
+    // Native PHP modes mapped for consistency
+    public const ROUND_HALF_UP = PHP_ROUND_HALF_UP;
+    public const ROUND_HALF_DOWN = PHP_ROUND_HALF_DOWN;
+    public const ROUND_HALF_EVEN = PHP_ROUND_HALF_EVEN;
+    public const ROUND_HALF_ODD = PHP_ROUND_HALF_ODD;
+    
+    // Custom modes
+    public const ROUND_UP = 10;   // Always round away from zero (Ceil)
+    public const ROUND_DOWN = 11; // Always truncate (Floor)
+
     public static function add(string $a, string $b): string
     {
         self::validate($a, $b);
@@ -53,22 +64,49 @@ final class BigNumber
     }
 
     /**
-     * Arrondi avec mode spécifique
+     * Performs arbitrary precision rounding.
      * 
-     * @param string $value Valeur à arrondir
-     * @param int $precision Nombre de décimales
-     * @param int $mode Mode d'arrondi (PHP_ROUND_*)
+     * @param string $value The numeric string to round
+     * @param int $precision Target decimal places
+     * @param int $mode One of BigNumber::ROUND_* constants
      */
-    public static function round(string $value, int $precision, int $mode = PHP_ROUND_HALF_UP): string
+    public static function round(string $value, int $precision, int $mode = self::ROUND_HALF_UP): string
     {
         self::validate($value);
-        
-        // BCMath ne supporte pas les modes d'arrondi natifs
-        // On utilise la fonction PHP round() qui elle les supporte
+
+        // Handle ROUND_DOWN (Truncate)
+        if ($mode === self::ROUND_DOWN) {
+            return bcadd($value, '0', $precision);
+        }
+
+        // Handle Sign: Work with positive numbers, re-apply sign later
+        if (bccomp($value, '0') === -1) {
+            return '-' . self::round(ltrim($value, '-'), $precision, $mode);
+        }
+
+        // Handle ROUND_UP (Ceil for positives)
+        if ($mode === self::ROUND_UP) {
+            $truncated = bcadd($value, '0', $precision);
+            // If value is greater than truncated, add 1 unit of precision
+            if (bccomp($value, $truncated, strlen($value)) > 0) {
+                $unit = bcdiv('1', bcpow('10', (string) $precision), $precision);
+                return bcadd($truncated, $unit, $precision);
+            }
+            return $truncated;
+        }
+
+        // Handle ROUND_HALF_UP (Standard Banking)
+        if ($mode === self::ROUND_HALF_UP) {
+            $fraction = bcdiv('5', bcpow('10', (string) ($precision + 1)), $precision + 1);
+            $withFraction = bcadd($value, $fraction, $precision + 1);
+            
+            return bcadd($withFraction, '0', $precision);
+        }
+
+        // Fallback to PHP native for unsupported modes (e.g., HALF_EVEN)
         $float = (float) $value;
         $rounded = round($float, $precision, $mode);
         
-        // Retour en string avec la précision exacte
         return number_format($rounded, $precision, '.', '');
     }
 

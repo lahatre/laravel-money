@@ -1,6 +1,6 @@
 <?php
 
-namespace Lahatre\Money\ValueObjects;
+namespace Lahatre\Money;
 
 use Lahatre\Money\Exceptions\NegativeMoneyException;
 use Lahatre\Money\Support\BigNumber;
@@ -8,18 +8,19 @@ use InvalidArgumentException;
 use Stringable;
 
 /**
- * Value Object immutable représentant un montant monétaire
+ * Immutable Value Object representing a monetary amount.
+ * 
+ * Enforces precision, rounding rules, and arithmetic safety.
  * 
  * @example
  * $price = Money::from("19.99");
- * $total = $price->mul(3); // 59.97
- * $vat = $total->percentage(20); // 11.99
+ * $total = $price->mul(3);
+ * $vat = $total->percentage(20);
  */
 final class Money implements Stringable
 {
     /**
-     * Montant en minor unit (centimes)
-     * Ex: "1050" pour 10.50€
+     * Amount in minor units (e.g., "1050" for 10.50)
      */
     private string $minorAmount;
 
@@ -36,9 +37,9 @@ final class Money implements Stringable
     }
 
     /**
-     * Factory: crée depuis un montant en format humain (major unit)
+     * Create from human-readable format (Major Units).
      * 
-     * @param float|int|string $amount Montant en format humain (10.50)
+     * @param $amount int|float|string (e.g., 10.50, "10.50")
      */
     public static function from(float|int|string $amount): self
     {
@@ -52,10 +53,10 @@ final class Money implements Stringable
     }
 
     /**
-     * Factory: crée depuis un montant déjà en minor unit
+     * Create from minor units (integers).
      * 
-     * @param int|string $minorAmount Montant en centimes (1050)
-     * @internal Utilisé par MoneyCast
+     * @param $minorAmount int|string (e.g., 1050 for 10.50)
+     * @internal Used by MoneyCast
      */
     public static function fromMinor(int|string $minorAmount): self
     {
@@ -64,7 +65,7 @@ final class Money implements Stringable
     }
 
     /**
-     * Factory: zéro
+     * Create a zero value instance.
      */
     public static function zero(): self
     {
@@ -72,9 +73,7 @@ final class Money implements Stringable
     }
 
     /**
-     * Addition
-     * 
-     * @param Money|int|float|string $other
+     * Add another money value.
      */
     public function add(Money|int|float|string $other): self
     {
@@ -85,9 +84,7 @@ final class Money implements Stringable
     }
 
     /**
-     * Soustraction
-     * 
-     * @param Money|int|float|string $other
+     * Subtract another money value.
      */
     public function sub(Money|int|float|string $other): self
     {
@@ -98,147 +95,114 @@ final class Money implements Stringable
     }
 
     /**
-     * Multiplication par un facteur entier
+     * Multiply by a factor.
      * 
-     * @param int $factor Multiplicateur (entier uniquement)
-     * 
-     * @example
-     * $itemPrice = Money::from("19.99");
-     * $total = $itemPrice->mul(3); // 59.97
+     * @param $multiplier Factor (e.g., 3, 1.5, "0.20")
+     * @param int|null $roundingMode Optional override for rounding logic
      */
-    public function mul(int $factor): self
+    public function mul(int|float|string $multiplier, ?int $roundingMode = null): self
     {
-        $result = BigNumber::mul($this->minorAmount, (string) $factor);
+        $roundingMode ??= config('money.rounding_mode', BigNumber::ROUND_HALF_UP);
+        $multiplier = (string) $multiplier;
 
-        return new self($result, $this->precision);
+        // Calculate on minor units with high precision buffer
+        $result = bcmul($this->minorAmount, $multiplier, 10);
+
+        $rounded = BigNumber::round($result, 0, $roundingMode);
+
+        return new self($rounded, $this->precision);
     }
 
     /**
-     * Division par un diviseur entier
+     * Divide by a divisor.
      * 
-     * ⚠️ Utilise le mode d'arrondi configuré (défaut: ROUND_HALF_UP)
-     * 
-     * @param int $divisor Diviseur (entier uniquement, != 0)
-     * @throws InvalidArgumentException Si diviseur = 0
-     * 
-     * @example
-     * $total = Money::from("100.00");
-     * $perPerson = $total->div(3); // 33.33
+     * @param $divisor Divisor (e.g., 3)
+     * @param int|null $roundingMode Optional override for rounding logic
+     * @throws InvalidArgumentException If divisor is zero
      */
-    public function div(int $divisor): self
+    public function div(int|float|string $divisor, ?int $roundingMode = null): self
     {
-        if ($divisor === 0) {
+        if ((string)$divisor === '0') {
             throw new InvalidArgumentException('Division by zero');
         }
 
-        // Division en minor unit avec arrondi
-        $majorAmount = $this->toMajorUnit();
-        $result = bcdiv($majorAmount, (string) $divisor, $this->precision + 2);
+        $roundingMode ??= config('money.rounding_mode', BigNumber::ROUND_HALF_UP);
+        $divisor = (string) $divisor;
+
+        // Calculate directly on minor units
+        $result = bcdiv($this->minorAmount, $divisor, 10);
         
-        // Arrondi selon le mode configuré
-        $roundingMode = config('money.rounding_mode', PHP_ROUND_HALF_UP);
-        $rounded = BigNumber::round($result, $this->precision, $roundingMode);
+        $rounded = BigNumber::round($result, 0, $roundingMode);
         
-        return self::from($rounded);
+        return new self($rounded, $this->precision);
     }
 
     /**
-     * Calcul de pourcentage
+     * Calculate percentage of the amount.
      * 
-     * @param int|float $rate Taux (5 pour 5%, 5.5 pour 5.5%)
-     * @param int|null $roundingMode Mode d'arrondi (null = config)
-     * 
-     * @example
-     * $price = Money::from("100.00");
-     * $vat = $price->percentage(20); // 20.00
-     * $discount = $price->percentage(15.5); // 15.50
+     * @param $rate Rate (e.g., 20 for 20%)
      */
     public function percentage(int|float $rate, ?int $roundingMode = null): self
     {
         $roundingMode ??= config('money.rounding_mode', PHP_ROUND_HALF_UP);
         
-        // Calcul en major unit pour précision maximale
+        // Use major units for calculation stability
         $major = $this->toMajorUnit();
         $rateStr = (string) $rate;
         
-        // major × rate ÷ 100
+        // major * rate / 100
         $result = bcmul($major, $rateStr, $this->precision + 2);
         $result = bcdiv($result, '100', $this->precision + 2);
         
-        // Arrondi
         $rounded = BigNumber::round($result, $this->precision, $roundingMode);
         
         return self::from($rounded);
     }
 
-    /**
-     * Égalité
-     */
+    // Comparison Methods
+
     public function equals(Money $other): bool
     {
         return BigNumber::compare($this->minorAmount, $other->minorAmount) === 0;
     }
 
-    /**
-     * Plus grand que
-     */
     public function greaterThan(Money $other): bool
     {
         return BigNumber::compare($this->minorAmount, $other->minorAmount) > 0;
     }
 
-    /**
-     * Plus grand ou égal
-     */
     public function greaterThanOrEqual(Money $other): bool
     {
         return BigNumber::compare($this->minorAmount, $other->minorAmount) >= 0;
     }
 
-    /**
-     * Plus petit que
-     */
     public function lessThan(Money $other): bool
     {
         return BigNumber::compare($this->minorAmount, $other->minorAmount) < 0;
     }
 
-    /**
-     * Plus petit ou égal
-     */
     public function lessThanOrEqual(Money $other): bool
     {
         return BigNumber::compare($this->minorAmount, $other->minorAmount) <= 0;
     }
 
-    /**
-     * Est zéro ?
-     */
     public function isZero(): bool
     {
         return BigNumber::compare($this->minorAmount, '0') === 0;
     }
 
-    /**
-     * Est positif ?
-     */
     public function isPositive(): bool
     {
         return BigNumber::compare($this->minorAmount, '0') > 0;
     }
 
-    /**
-     * Est négatif ?
-     */
     public function isNegative(): bool
     {
         return BigNumber::compare($this->minorAmount, '0') < 0;
     }
 
     /**
-     * Retourne le montant en minor unit (pour DB)
-     * 
-     * @internal Utilisé par MoneyCast
+     * Get the amount in minor units (for DB storage).
      */
     public function getMinorAmount(): string
     {
@@ -246,9 +210,7 @@ final class Money implements Stringable
     }
 
     /**
-     * Retourne le montant en major unit (format humain)
-     * 
-     * @return string Ex: "10.50"
+     * Get the amount in major units (human readable).
      */
     public function getAmount(): string
     {
@@ -256,9 +218,9 @@ final class Money implements Stringable
     }
 
     /**
-     * Formatage pour l'affichage
+     * Format for display.
      * 
-     * @return string Ex: "10.50" ou "1050" (si precision=0)
+     * @return string e.g., "10.50"
      */
     public function format(): string
     {
@@ -271,18 +233,13 @@ final class Money implements Stringable
         return number_format((float) $major, $this->precision, '.', '');
     }
 
-    /**
-     * Cast en string
-     */
     public function __toString(): string
     {
         return $this->format();
     }
 
-    /**
-     * Conversion minor unit → major unit
-     * Ex: "1050" → "10.50"
-     */
+    // Internal Helpers
+
     private function toMajorUnit(): string
     {
         if ($this->precision === 0) {
@@ -292,10 +249,6 @@ final class Money implements Stringable
         return bcdiv($this->minorAmount, $this->divisor, $this->precision);
     }
 
-    /**
-     * Conversion major unit → minor unit
-     * Ex: "10.50" → "1050"
-     */
     private static function toMinorUnit(string $major, string $divisor, int $precision): string
     {
         if ($precision === 0) {
@@ -306,9 +259,6 @@ final class Money implements Stringable
         return bcadd($result, '0', 0);
     }
 
-    /**
-     * Normalisation de l'entrée utilisateur
-     */
     private static function normalizeInput(float|int|string $value): string
     {
         $value = (string) $value;
@@ -320,17 +270,11 @@ final class Money implements Stringable
         return $value;
     }
 
-    /**
-     * Coercion: convertit toute valeur en Money
-     */
     private function ensureMoney(Money|float|int|string $value): self
     {
         return $value instanceof self ? $value : self::from($value);
     }
 
-    /**
-     * Validation: rejette les négatifs si configuré
-     */
     private function guardNegative(): void
     {
         if (!config('money.allow_negative', false) && $this->isNegative()) {

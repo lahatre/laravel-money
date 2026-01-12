@@ -1,6 +1,10 @@
 {
     "name": "lahatre/money",
     "version": "0.0.1",
+    "require": {
+        "php": "^8.0",
+        "ext-bcmath": "*"
+    },
     "autoload": {
         "psr-4": {
             "Lahatre\\Money\\": "src/"

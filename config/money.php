@@ -2,52 +2,51 @@
 
 /**
  * ============================================================================
- * LARAVEL MONEY PACKAGE - Production Ready
+ * LAHATRE MONEY - Configuration
  * ============================================================================
  * 
  * Architecture:
- * - Entrée: format humain (10.50)
- * - Interne: minor unit (1050) en string
- * - Calculs: BCMath sur minor unit
- * - Sortie: format humain (10.50)
- * - DB: integer (1050)
+ * - Input: Human format (e.g., "10.50")
+ * - Internal: Minor units string (e.g., "1050")
+ * - Math: BCMath on minor units (arbitrary precision)
+ * - Storage: Integer (BigInt)
  * 
  * Invariants:
- * - Immutabilité totale
- * - BCMath uniquement
- * - Pas de float
- * - Négatifs rejetés par défaut
- * - Arrondi bancaire standard (HALF_UP)
+ * - Immutable by design
+ * - No floating point arithmetic
+ * - Strict validation (numeric strings)
  */
+
+use Lahatre\Money\Support\BigNumber;
 
 return [
     /**
-     * Précision de la devise (nombre de décimales)
+     * Currency Precision (decimals)
      * 
-     * Exemples:
-     * - EUR, USD, GBP: 2 (centimes)
-     * - JPY, KRW: 0 (pas de subdivision)
-     * - KWD, BHD, OMR: 3 (fils)
-     * - MRU: 1 (khoums)
+     * Common values:
+     * - 2: EUR, USD, GBP
+     * - 0: XOF, JPY, KRW
+     * - 3: KWD, BHD, TND
      */
     'precision' => env('MONEY_PRECISION', 2),
 
     /**
-     * Mode d'arrondi (constantes PHP_ROUND_*)
+     * Default Rounding Mode
      * 
-     * PHP_ROUND_HALF_UP   : 0.385 → 0.39 (standard bancaire)
-     * PHP_ROUND_HALF_DOWN : 0.385 → 0.38 (conservateur)
-     * PHP_ROUND_DOWN      : 0.389 → 0.38 (floor)
-     * PHP_ROUND_UP        : 0.381 → 0.39 (ceil)
-     * PHP_ROUND_HALF_EVEN : 0.385 → 0.38, 0.375 → 0.38 (banker's rounding)
+     * Controls how extra precision is handled during division/percentage.
+     * 
+     * Options:
+     * - BigNumber::ROUND_HALF_UP   : Standard banker's rounding (0.5 -> up)
+     * - BigNumber::ROUND_UP        : Always rounds away from zero (Ceil)
+     * - BigNumber::ROUND_DOWN      : Truncates extra decimals (Floor)
      */
-    'rounding_mode' => PHP_ROUND_HALF_UP,
+    'rounding_mode' => BigNumber::ROUND_HALF_UP,
 
     /**
-     * Autoriser les montants négatifs ?
+     * Negative Amounts Policy
      * 
-     * false : Sécurité stricte (rejette les négatifs)
-     * true  : Autorise découverts, dettes, etc.
+     * false : Strict mode. Throws exception on negative results.
+     * true  : Allow debts, overdrafts, and negative balances.
      */
     'allow_negative' => false,
 ];
