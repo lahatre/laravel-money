@@ -1,6 +1,6 @@
 {
-    "name": "lahatre/money",
-    "version": "0.0.1",
+    "name": "lahatre/laravel-money",
+    "description": "A precise, immutable, and float-safe money value object for Laravel.",
     "require": {
         "php": "^8.0",
         "ext-bcmath": "*"
